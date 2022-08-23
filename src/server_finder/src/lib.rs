@@ -41,7 +41,7 @@ pub fn find_server(group_addr: Ipv4Addr, group_port: u16,
                 continue;
             }
         };
-        if key_phrase != phrase {
+        if key_phrase != phrase || port <= 0 {
             continue;
         }
         let ip = match origin.ip().to_string().parse::<Ipv4Addr>() {
