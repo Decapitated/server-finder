@@ -49,18 +49,18 @@ fn cast(running: Arc<AtomicBool>) -> io::Result<()> {
 fn main() {
     let running = Arc::new(AtomicBool::new(true));
 
-    let run_clone = Arc::clone(&running);
+    let run_clone = running.clone();
     ctrlc::set_handler(move || {
         println!("Ctrl+C");
         run_clone.store(false, Ordering::Release);
     }).expect("Should set running to false.");
 
-    let run_clone = Arc::clone(&running);
+    let run_clone = running.clone();
     let listen_thread = thread::spawn(move ||{
         listen(run_clone).expect("Should be listening.");
     });
 
-    let run_clone = Arc::clone(&running);
+    let run_clone = running.clone();
     let cast_thread = thread::spawn(move ||{
         cast(run_clone).expect("Should be casting.");
     });
