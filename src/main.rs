@@ -82,8 +82,10 @@ fn init_stream(toggle: Arc<AtomicBool>, stream: TcpStream) {
                 },
                 Err(e) => panic!("encountered IO error: {e}")
             };
-            let msg = String::from_utf8((&mut buffer[..data]).to_vec()).expect("should convert buffer to string");
-            println!("Other -> {}", msg);
+            if data > 0 {
+                let msg = String::from_utf8((&mut buffer[..data]).to_vec()).expect("should convert buffer to string");
+                println!("Other -> {}", msg);
+            }
         }
     });
 
