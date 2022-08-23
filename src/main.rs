@@ -37,11 +37,10 @@ fn listen(running: Arc<AtomicBool>) -> io::Result<()> {
 fn cast(running: Arc<AtomicBool>) -> io::Result<()> {
     let socket_addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0);
     let socket = UdpSocket::bind(socket_addr)?;
-    socket.connect(SocketAddrV4::new(GROUP_ADDR, GROUP_PORT))?;
     socket.set_multicast_loop_v4(false)?;
     while running.load(Ordering::SeqCst) != false {
-        socket.send(TCP_PORT.to_string().as_bytes())?;
-        thread::sleep(time::Duration::from_secs(2));
+        socket.send_to(TCP_PORT.to_string().as_bytes(), SocketAddrV4::new(GROUP_ADDR, GROUP_PORT))?;
+        thread::sleep(time::Duration::from_secs(1));
     }
     println!("Cast exiting.");
     Ok(())
