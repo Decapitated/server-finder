@@ -5,6 +5,29 @@ static GROUP_ADDR: Ipv4Addr = Ipv4Addr::new(230, 0, 0, 1);
 static GROUP_PORT: u16 = 5454;
 static TCP_PORT: u16 = 5469;
 
+fn main() {
+    let running = Arc::new(AtomicBool::new(true));
+
+    let run_clone = running.clone();
+    ctrlc::set_handler(move || {
+        println!("Ctrl+C");
+        run_clone.store(false, Ordering::SeqCst);
+    }).expect("Should set running to false.");
+
+    let run_clone = running.clone();
+    let listen_thread = thread::spawn(move ||{
+        listen(run_clone).expect("Should be listening.");
+    });
+
+    let run_clone = running.clone();
+    let cast_thread = thread::spawn(move ||{
+        cast(run_clone).expect("Should be casting.");
+    });
+
+    listen_thread.join().expect("Listen thread should join.");
+    cast_thread.join().expect("Cast thread should join.");
+}
+
 fn listen(running: Arc<AtomicBool>) -> io::Result<()> {
     let socket_addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), GROUP_PORT);
     // Use system default.
@@ -44,27 +67,4 @@ fn cast(running: Arc<AtomicBool>) -> io::Result<()> {
     }
     println!("Cast exiting.");
     Ok(())
-}
-
-fn main() {
-    let running = Arc::new(AtomicBool::new(true));
-
-    let run_clone = running.clone();
-    ctrlc::set_handler(move || {
-        println!("Ctrl+C");
-        run_clone.store(false, Ordering::SeqCst);
-    }).expect("Should set running to false.");
-
-    let run_clone = running.clone();
-    let listen_thread = thread::spawn(move ||{
-        listen(run_clone).expect("Should be listening.");
-    });
-
-    let run_clone = running.clone();
-    let cast_thread = thread::spawn(move ||{
-        cast(run_clone).expect("Should be casting.");
-    });
-
-    listen_thread.join().expect("Listen thread should join.");
-    cast_thread.join().expect("Cast thread should join.");
 }
