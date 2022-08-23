@@ -52,7 +52,7 @@ fn main() {
     let run_clone = running.clone();
     ctrlc::set_handler(move || {
         println!("Ctrl+C");
-        run_clone.store(false, Ordering::Release);
+        run_clone.store(false, Ordering::SeqCst);
     }).expect("Should set running to false.");
 
     let run_clone = running.clone();
