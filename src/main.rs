@@ -26,6 +26,7 @@ fn main() {
         "server" => server(run_clone),
         _ => panic!("Invalid mode specified.")
     }
+    println!("Finished.");
 }
 
 fn client(toggle: Arc<AtomicBool>) {

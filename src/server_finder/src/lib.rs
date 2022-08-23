@@ -88,7 +88,7 @@ pub fn find_client(toggle: Arc<AtomicBool>,
         let socket_addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0);
         let socket = UdpSocket::bind(socket_addr).expect("should bind udp_socket");
         socket.set_multicast_loop_v4(false).expect("should prevent loop");
-        while toggle_clone.load(Ordering::SeqCst) && finished_clone.load(Ordering::SeqCst) {
+        while toggle_clone.load(Ordering::SeqCst) && !finished_clone.load(Ordering::SeqCst) {
             socket.send_to(
                 format!("{}:{}",
                     urlencoding::encode(phrase.as_str()),
