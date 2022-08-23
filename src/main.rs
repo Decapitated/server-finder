@@ -1,11 +1,15 @@
-use std::{net::{Ipv4Addr, SocketAddrV4, UdpSocket}, io::{self, ErrorKind}, thread, time, sync::{atomic::{AtomicBool, Ordering}, Arc}};
+use core::panic;
+use std::{net::{Ipv4Addr, SocketAddrV4, UdpSocket}, io::{Result, ErrorKind}, thread, time, sync::{atomic::{AtomicBool, Ordering}, Arc}, env};
 use ctrlc;
+use server_finder;
 
-static GROUP_ADDR: Ipv4Addr = Ipv4Addr::new(230, 0, 0, 1);
-static GROUP_PORT: u16 = 5454;
-static TCP_PORT: u16 = 5469;
+const GROUP_ADDR: Ipv4Addr = Ipv4Addr::new(230, 69, 69, 1);
+const GROUP_PORT: u16 = 5454;
+const TCP_PORT: u16 = 5469;
+const PHRASE: &str = "TestServer";
+const SECRET: &str = "b36914ad-0062-4118-aa72-fb40c0789647";
 
-fn main() {
+fn __main() {
     let running = Arc::new(AtomicBool::new(true));
 
     let run_clone = running.clone();
@@ -28,7 +32,32 @@ fn main() {
     cast_thread.join().expect("Cast thread should join.");
 }
 
-fn listen(running: Arc<AtomicBool>) -> io::Result<()> {
+fn main() {
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        panic!("No mode specified.");
+    }
+    let mode = &args[1]; // Client/Server.
+    match mode.as_str() {
+        "client" => client(),
+        "server" => server(),
+        _ => panic!("Invalid mode specified.")
+    }
+}
+
+fn client() {
+    println!("Running as client.");
+    server_finder::find_server(
+        GROUP_ADDR, GROUP_PORT, String::from(PHRASE)).expect("should find server");
+}
+
+fn server() {
+    println!("Running as server.");
+    server_finder::find_client(
+        GROUP_ADDR, GROUP_PORT, TCP_PORT, String::from(PHRASE), String::from(SECRET)).expect("should find client");
+}
+
+fn listen(running: Arc<AtomicBool>) -> Result<()> {
     let socket_addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), GROUP_PORT);
     // Use system default.
     let interface_addr = Ipv4Addr::new(0, 0, 0, 0);
@@ -57,7 +86,7 @@ fn listen(running: Arc<AtomicBool>) -> io::Result<()> {
     Ok(())
 }
 
-fn cast(running: Arc<AtomicBool>) -> io::Result<()> {
+fn cast(running: Arc<AtomicBool>) -> Result<()> {
     let socket_addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0);
     let socket = UdpSocket::bind(socket_addr)?;
     socket.set_multicast_loop_v4(false)?;
