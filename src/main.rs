@@ -49,12 +49,11 @@ fn cast(running: Arc<AtomicBool>) -> io::Result<()> {
 
 fn main() {
     let running = Arc::new(AtomicBool::new(true));
-    
+
     let run_clone = Arc::clone(&running);
     ctrlc::set_handler(move || {
         println!("Ctrl+C");
-        run_clone.store(false, Ordering::Release)
-        
+        run_clone.store(false, Ordering::Release);
     }).expect("Should set running to false.");
 
     let run_clone = Arc::clone(&running);
