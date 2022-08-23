@@ -120,7 +120,6 @@ fn await_client(secret: String, toggle: Arc<AtomicBool>, tcp_port:Arc<AtomicU16>
             },
             Err(e) => panic!("encountered IO error: {e}")
         };
-        stream.set_nonblocking(false).expect("should set stream to nonblocking");
         let mut buffer = [0; 1024];
         let data = match stream.read(&mut buffer) {
             Ok(r) => r,

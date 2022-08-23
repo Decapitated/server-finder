@@ -1,4 +1,4 @@
-use std::{net::{Ipv4Addr, TcpStream}, sync::{atomic::{AtomicBool, Ordering}, Arc}, env, io::{Read, Write}, thread, clone};
+use std::{net::{Ipv4Addr, TcpStream}, sync::{atomic::{AtomicBool, Ordering}, Arc}, env, io::{Read, Write, self}, thread, time};
 use ctrlc;
 use server_finder;
 
@@ -68,13 +68,20 @@ fn server(toggle: Arc<AtomicBool>) {
 }
 
 fn init_stream(toggle: Arc<AtomicBool>, stream: TcpStream) {
+    stream.set_nonblocking(true).expect("should set to non blocking");
     // Read thread.
     let mut s_copy = stream.try_clone().expect("should clone server stream");
     let t_copy = toggle.clone();
     let read_thread = thread::spawn(move ||{
         while t_copy.load(Ordering::SeqCst) {
             let mut buffer = [0; 1024];
-            let data = s_copy.read(&mut buffer).expect("should read into buffer");
+            let data = match s_copy.read(&mut buffer) {
+                Ok(r) => r,
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    continue;
+                },
+                Err(e) => panic!("encountered IO error: {e}")
+            };
             let msg = String::from_utf8((&mut buffer[..data]).to_vec()).expect("should convert buffer to string");
             println!("Other -> {}", msg);
         }
@@ -83,7 +90,7 @@ fn init_stream(toggle: Arc<AtomicBool>, stream: TcpStream) {
     // Write thread.
     let mut s_copy = stream.try_clone().expect("should clone server stream");
     let t_copy = toggle.clone();
-    thread::spawn(move ||{
+    let write_thread = thread::spawn(move ||{
         while t_copy.load(Ordering::SeqCst) {
             let mut line = String::new();
             let num_b = std::io::stdin().read_line(&mut line).expect("should read input into line");
@@ -91,8 +98,10 @@ fn init_stream(toggle: Arc<AtomicBool>, stream: TcpStream) {
                 s_copy.write(line.as_bytes()).expect("should write string to stream");
                 println!("You -> {}", line);
             }
+            thread::sleep(time::Duration::from_millis(500))
         }
     });
 
     read_thread.join().expect("should join read thread");
+    write_thread.join().expect("should join write thread");
 }
