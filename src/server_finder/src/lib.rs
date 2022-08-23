@@ -1,15 +1,16 @@
-use std::{net::{Ipv4Addr, SocketAddrV4, UdpSocket, TcpStream, TcpListener}, io::{self, ErrorKind, Read}, thread::{self, JoinHandle}, time, sync::{atomic::{AtomicBool, Ordering, AtomicU16}, Arc}};
+use std::{net::{Ipv4Addr, SocketAddrV4, UdpSocket, TcpStream, TcpListener}, io::{self, ErrorKind, Read, Write}, thread::{self, JoinHandle}, time, sync::{atomic::{AtomicBool, Ordering, AtomicU16}, Arc}};
 use rand::rngs::ThreadRng;
 use rsa::{PublicKey, RsaPrivateKey, RsaPublicKey, PaddingScheme, pkcs8::{EncodePublicKey, DecodePublicKey}};
 use urlencoding;
 
-pub fn find_server(group_addr: Ipv4Addr, group_port: u16, phrase: String) -> io::Result<()> { //TcpStream
+pub fn find_server(group_addr: Ipv4Addr, group_port: u16,
+                   phrase: String, secret: String) -> io::Result<TcpStream> {
     // Setup multicast socket for listening.
     let socket_addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), group_port);
     let interface_addr = Ipv4Addr::new(0, 0, 0, 0); // Use system default.
-    let socket = UdpSocket::bind(socket_addr)?;
-    socket.join_multicast_v4(&group_addr, &interface_addr)?;
-    socket.set_nonblocking(true)?;
+    let socket = UdpSocket::bind(socket_addr).expect("should bind udp_socket");
+    socket.join_multicast_v4(&group_addr, &interface_addr).expect("should join group");
+    socket.set_nonblocking(true).expect("should set nonblocking");
     // Listen for messages, then verify; returning the address for the server.
     let server_addr: SocketAddrV4 = loop {
         let mut buffer = [0; 1024];
@@ -48,8 +49,9 @@ pub fn find_server(group_addr: Ipv4Addr, group_port: u16, phrase: String) -> io:
         };
         break SocketAddrV4::new(ip, port);
     };
-    println!("{}", server_addr);
-    Ok(())
+    let mut stream = TcpStream::connect(server_addr).expect("should connect to server");
+    stream.write(secret.as_bytes())?;
+    Ok(stream)
 }
 
 pub fn find_client(toggle: Arc<AtomicBool>,
@@ -87,7 +89,7 @@ pub fn find_client(toggle: Arc<AtomicBool>,
         socket.send_to(TCP_PORT.to_string().as_bytes(), SocketAddrV4::new(GROUP_ADDR, GROUP_PORT))?;
         thread::sleep(time::Duration::from_secs(1));
     }*/
-    let client = await_thread.join().unwrap();
+    let client = await_thread.join().expect("should be client stream");
     toggle.store(false, Ordering::SeqCst);
     Ok(client)
 }
@@ -115,7 +117,7 @@ fn await_client(secret: String, toggle: Arc<AtomicBool>, tcp_port:Arc<AtomicU16>
             continue;
         }
     }
-    Ok(client.unwrap())
+    Ok(client.expect("should be stream"))
 }
 
 // let pub_key = RsaPublicKey::from_public_key_pem(split.next().unwrap()).expect("should parse pem into public key");

@@ -1,5 +1,4 @@
-use core::panic;
-use std::{net::Ipv4Addr, sync::{atomic::{AtomicBool, Ordering}, Arc}, env};
+use std::{net::{Ipv4Addr, TcpStream}, sync::{atomic::{AtomicBool, Ordering}, Arc}, env, io::{Read, Write}, thread, clone};
 use ctrlc;
 use server_finder;
 
@@ -23,20 +22,62 @@ fn main() {
     }
     let run_clone = running.clone();
     match (&args[1]).as_str() {
-        "client" => client(),
+        "client" => client(run_clone),
         "server" => server(run_clone),
         _ => panic!("Invalid mode specified.")
     }
 }
 
-fn client() {
+fn client(toggle: Arc<AtomicBool>) {
     println!("Running as client.");
-    server_finder::find_server(
-        GROUP_ADDR, GROUP_PORT, String::from(PHRASE)).expect("should find server");
+    let result = server_finder::find_server(
+        GROUP_ADDR, GROUP_PORT, String::from(PHRASE), String::from(SECRET));
+    let stream = match result {
+        Ok(r) => r,
+        Err(e) => panic!("(Client) {}", e)
+    };
+    println!("Found server.");
+    init_stream(toggle.clone(), stream);
 }
 
 fn server(toggle: Arc<AtomicBool>) {
     println!("Running as server.");
-    let client_stream = server_finder::find_client(
-        toggle.clone(), GROUP_ADDR, GROUP_PORT, String::from(PHRASE), String::from(SECRET)).expect("should find client");
+    let result = server_finder::find_client(
+        toggle.clone(), GROUP_ADDR, GROUP_PORT, String::from(PHRASE), String::from(SECRET));
+    let stream = match result {
+        Ok(r) => r,
+        Err(e) => panic!("(Server) {}", e)
+    };
+    println!("Found client.");
+    init_stream(toggle.clone(), stream);
+}
+
+fn init_stream(toggle: Arc<AtomicBool>, stream: TcpStream) {
+    // Read thread.
+    let mut s_copy = stream.try_clone().expect("should clone server stream");
+    let t_copy = toggle.clone();
+    let read_thread = thread::spawn(move ||{
+        while t_copy.load(Ordering::SeqCst) {
+            let mut buffer = [0; 1024];
+            let data = s_copy.read(&mut buffer).expect("should read into buffer");
+            let msg = String::from_utf8((&mut buffer[..data]).to_vec()).expect("should convert buffer to string");
+            println!("Other -> {}", msg);
+        }
+    });
+
+    // Write thread.
+    let mut s_copy = stream.try_clone().expect("should clone server stream");
+    let t_copy = toggle.clone();
+    thread::spawn(move ||{
+        while t_copy.load(Ordering::SeqCst) {
+            let mut line = String::new();
+            let num_b = std::io::stdin().read_line(&mut line).expect("should read input into line");
+            if num_b > 0 {
+                s_copy.write(line.as_bytes()).expect("should write string to stream");
+                println!("You -> {}", line);
+            }
+        }
+    });
+
+    read_thread.join().expect("should join read thread");
 }
