@@ -24,6 +24,7 @@ pub fn find_server(group_addr: Ipv4Addr, group_port: u16,
             }
         };
         let msg = String::from_utf8((&mut buffer[..data]).to_vec()).unwrap();
+        println!("[{}] {}", origin, msg); // #Debug
         let mut split = msg.split(":");
         let parsed_msg: io::Result<(String, u16)> = {
             let key_phrase = String::from(split.next().unwrap());
@@ -47,6 +48,7 @@ pub fn find_server(group_addr: Ipv4Addr, group_port: u16,
                 continue;
             }
         };
+        println!("Server Found @ {}:{}", ip, port); // #Debug
         break SocketAddrV4::new(ip, port);
     };
     let mut stream = TcpStream::connect(server_addr).expect("should connect to server");
@@ -108,10 +110,15 @@ fn await_client(secret: String, toggle: Arc<AtomicBool>, tcp_port:Arc<AtomicU16>
             },
             Err(e) => panic!("encountered IO error: {e}")
         };
+        stream.set_nonblocking(false).expect("should set stream to nonblocking");
         let mut buffer = [0; 1024];
-        let data = stream.read(&mut buffer)?;
+        let data = match stream.read(&mut buffer) {
+            Ok(r) => r,
+            Err(_) => continue
+        };
         let msg = String::from_utf8((&mut buffer[..data]).to_vec()).unwrap();
         if msg == secret {
+            println!("Secret Received: {}", msg); // #Debug
             client = Some(stream);
         } else {
             continue;
