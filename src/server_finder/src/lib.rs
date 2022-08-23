@@ -1,4 +1,4 @@
-use std::{net::{Ipv4Addr, SocketAddrV4, UdpSocket, TcpStream}, io::{self, ErrorKind}, thread, time};
+use std::{net::{Ipv4Addr, SocketAddrV4, UdpSocket, TcpStream, TcpListener}, io::{self, ErrorKind, Read}, thread::{self, JoinHandle}, time, sync::{atomic::{AtomicBool, Ordering, AtomicU16}, Arc}};
 use rand::rngs::ThreadRng;
 use rsa::{PublicKey, RsaPrivateKey, RsaPublicKey, PaddingScheme, pkcs8::{EncodePublicKey, DecodePublicKey}};
 use urlencoding;
@@ -52,20 +52,70 @@ pub fn find_server(group_addr: Ipv4Addr, group_port: u16, phrase: String) -> io:
     Ok(())
 }
 
-pub fn find_client(group_addr: Ipv4Addr, group_port: u16, tcp_port: u16, phrase: String, secret: String) -> io::Result<()> { //TcpStream
-    // Setup multicast socket for casting.
-    let socket_addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0);
-    let socket = UdpSocket::bind(socket_addr)?;
-    socket.set_multicast_loop_v4(false)?;
+pub fn find_client(toggle: Arc<AtomicBool>,
+                   group_addr: Ipv4Addr, group_port: u16,
+                   phrase: String, secret: String) -> io::Result<TcpStream> { //TcpStream
+    let tcp_port: Arc<AtomicU16> = Arc::new(AtomicU16::new(0));
+
+    let toggle_clone = toggle.clone();
+    let port_clone = tcp_port.clone();
+    let await_thread: JoinHandle<TcpStream> = thread::spawn(move ||{
+        let client = match await_client(secret, toggle_clone, port_clone) {
+            Ok(r) => r,
+            _ => panic!("No client found.")
+        };
+        return client;
+    });
+
+    let toggle_clone = toggle.clone();
+    let port_clone = tcp_port.clone();
+    thread::spawn(move ||{
+        // Setup multicast socket for casting.
+        let socket_addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0);
+        let socket = UdpSocket::bind(socket_addr).expect("should bind udp_socket");
+        socket.set_multicast_loop_v4(false).expect("should prevent loop");
+        while toggle_clone.load(Ordering::SeqCst) {
+            socket.send_to(
+                format!("{}:{}",
+                    urlencoding::encode(phrase.as_str()),
+                    port_clone.load(Ordering::SeqCst)).as_bytes(),
+                SocketAddrV4::new(group_addr, group_port)).expect("should create a V4 address");
+            thread::sleep(time::Duration::from_secs(1));
+        }
+    });
     /*loop {
         socket.send_to(TCP_PORT.to_string().as_bytes(), SocketAddrV4::new(GROUP_ADDR, GROUP_PORT))?;
         thread::sleep(time::Duration::from_secs(1));
     }*/
-    for _ in 1..10 {
-        socket.send_to(format!("{}:{}", urlencoding::encode(phrase.as_str()), tcp_port).as_bytes(), SocketAddrV4::new(group_addr, group_port))?;
-        thread::sleep(time::Duration::from_secs(1));
+    let client = await_thread.join().unwrap();
+    toggle.store(false, Ordering::SeqCst);
+    Ok(client)
+}
+
+fn await_client(secret: String, toggle: Arc<AtomicBool>, tcp_port:Arc<AtomicU16>) -> io::Result<TcpStream> {
+    let socket_addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0);
+    let listener = TcpListener::bind(socket_addr)?;
+    tcp_port.store(listener.local_addr()?.port(), Ordering::SeqCst);
+    listener.set_nonblocking(true).expect("should set non-blocking");
+    let mut client: Option<TcpStream> = None;
+    while client.is_none() && toggle.load(Ordering::SeqCst) {
+        let (mut stream, _) = match listener.accept() {
+            Ok(r) => r,
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                continue;
+            },
+            Err(e) => panic!("encountered IO error: {e}")
+        };
+        let mut buffer = [0; 1024];
+        let data = stream.read(&mut buffer)?;
+        let msg = String::from_utf8((&mut buffer[..data]).to_vec()).unwrap();
+        if msg == secret {
+            client = Some(stream);
+        } else {
+            continue;
+        }
     }
-    Ok(())
+    Ok(client.unwrap())
 }
 
 // let pub_key = RsaPublicKey::from_public_key_pem(split.next().unwrap()).expect("should parse pem into public key");
