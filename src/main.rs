@@ -31,10 +31,17 @@ fn main() {
 fn client(toggle: Arc<AtomicBool>) {
     println!("Running as client.");
     let result = server_finder::find_server(
-        GROUP_ADDR, GROUP_PORT, String::from(PHRASE), String::from(SECRET));
-    let stream = match result {
+        GROUP_ADDR, GROUP_PORT, String::from(PHRASE), String::from(SECRET), toggle.clone());
+    let stream_option = match result {
         Ok(r) => r,
-        Err(e) => panic!("(Client) {}", e)
+        Err(e) => {
+            println!("(Client) {}", e);
+            return;
+        }
+    };
+    let stream = match stream_option {
+        Some(r) => r,
+        None => return
     };
     println!("Found server.");
     init_stream(toggle.clone(), stream);
@@ -44,9 +51,16 @@ fn server(toggle: Arc<AtomicBool>) {
     println!("Running as server.");
     let result = server_finder::find_client(
         toggle.clone(), GROUP_ADDR, GROUP_PORT, String::from(PHRASE), String::from(SECRET));
-    let stream = match result {
+    let stream_option = match result {
         Ok(r) => r,
-        Err(e) => panic!("(Server) {}", e)
+        Err(e) => {
+            println!("(Server) {}", e);
+            return;
+        }
+    };
+    let stream = match stream_option {
+        Some(r) => r,
+        None => return
     };
     println!("Found client.");
     init_stream(toggle.clone(), stream);
