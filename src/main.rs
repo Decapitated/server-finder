@@ -80,7 +80,10 @@ fn init_stream(toggle: Arc<AtomicBool>, stream: TcpStream) {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     continue;
                 },
-                Err(e) => panic!("encountered IO error: {e}")
+                Err(e) => {
+                    println!("encountered IO error: {e}");
+                    break;
+                }
             };
             if data > 0 {
                 let msg = String::from_utf8((&mut buffer[..data]).to_vec()).expect("should convert buffer to string");
@@ -105,5 +108,6 @@ fn init_stream(toggle: Arc<AtomicBool>, stream: TcpStream) {
     });
 
     read_thread.join().expect("should join read thread");
+    toggle.store(false, Ordering::SeqCst);
     write_thread.join().expect("should join write thread");
 }
